@@ -1,0 +1,117 @@
+# app.py
+import streamlit as st
+import requests
+import pandas as pd
+import time
+from datetime import datetime
+
+st.set_page_config(
+    page_title="Live Crypto Screener", 
+    page_icon="🚀",
+    layout="wide"
+)
+
+# Configuration
+AUTO_REFRESH = st.sidebar.checkbox("🔄 Enable Auto-Refresh", value=True)
+REFRESH_INTERVAL = st.sidebar.slider("Refresh Interval (seconds)", 30, 300, 60)
+
+def get_crypto_data():
+    """Fetch cryptocurrency data from CoinGecko API"""
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {
+        'vs_currency': 'usd',
+        'order': 'market_cap_desc', 
+        'per_page': 100,
+        'page': 1,
+        'sparkline': False,
+        'price_change_percentage': '1h,24h,7d,30d'
+    }
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        return pd.DataFrame(response.json())
+    except Exception as e:
+        st.error(f"Error fetching data: {e}")
+        return pd.DataFrame()
+
+def main():
+    st.title("🚀 Live Crypto Screening Dashboard")
+    st.markdown("### Real-time cryptocurrency rankings by volume and velocity")
+    
+    # Auto-refresh logic
+    if AUTO_REFRESH:
+        with st.sidebar:
+            st.write(f"⏰ Next refresh in {REFRESH_INTERVAL} seconds")
+            time.sleep(REFRESH_INTERVAL)
+            st.experimental_rerun()
+    
+    # Load data with spinner
+    with st.spinner('📡 Fetching latest cryptocurrency data...'):
+        df = get_crypto_data()
+    
+    if df.empty:
+        st.error("❌ Failed to fetch data. Please try again later.")
+        return
+    
+    # Calculate metrics
+    df['volume_mcap_ratio'] = (df['total_volume'] / df['market_cap']).fillna(0)
+    df = df[df['total_volume'] > 1000000]  # Filter low volume coins
+    
+    # Display last update time
+    st.sidebar.markdown(f"**🕒 Last Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Create three columns for rankings
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.subheader("🏆 Volume Leaders")
+        top_volume = df.nlargest(10, 'total_volume')
+        for idx, row in top_volume.iterrows():
+            vol_billions = row['total_volume'] / 1e9
+            change_24h = row.get('price_change_percentage_24h', 0)
+            st.metric(
+                label=f"{idx+1}. {row['name']} ({row['symbol'].upper()})",
+                value=f"${vol_billions:.2f}B",
+                delta=f"{change_24h:.2f}%"
+            )
+    
+    with col2:
+        st.subheader("💨 High Velocity")
+        top_ratio = df.nlargest(10, 'volume_mcap_ratio')
+        for idx, row in top_ratio.iterrows():
+            ratio_pct = row['volume_mcap_ratio'] * 100
+            vol_millions = row['total_volume'] / 1e6
+            st.metric(
+                label=f"{idx+1}. {row['name']} ({row['symbol'].upper()})",
+                value=f"{ratio_pct:.2f}%",
+                delta=f"${vol_millions:.1f}M"
+            )
+    
+    with col3:
+        st.subheader("📈 24h Gainers")
+        top_gainers = df.nlargest(10, 'price_change_percentage_24h')
+        for idx, row in top_gainers.iterrows():
+            change_24h = row.get('price_change_percentage_24h', 0)
+            vol_millions = row['total_volume'] / 1e6
+            st.metric(
+                label=f"{idx+1}. {row['name']} ({row['symbol'].upper()})",
+                value=f"{change_24h:.2f}%",
+                delta=f"${vol_millions:.1f}M"
+            )
+    
+    # Additional data table
+    st.subheader("📊 Detailed Overview")
+    display_df = df.head(20)[['name', 'symbol', 'current_price', 'total_volume', 
+                             'market_cap', 'price_change_percentage_24h']].copy()
+    display_df['total_volume'] = display_df['total_volume'].apply(lambda x: f"${x/1e6:.1f}M")
+    display_df['market_cap'] = display_df['market_cap'].apply(lambda x: f"${x/1e9:.1f}B")
+    display_df['current_price'] = display_df['current_price'].apply(lambda x: f"${x:,.2f}")
+    
+    st.dataframe(display_df, use_container_width=True)
+    
+    # Manual refresh button
+    if st.sidebar.button("🔄 Refresh Now"):
+        st.experimental_rerun()
+
+if __name__ == "__main__":
+    main()

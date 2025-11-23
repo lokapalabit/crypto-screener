@@ -1,0 +1,15 @@
+# 🚀 Live Crypto Screening App
+
+A real-time cryptocurrency screening dashboard that ranks coins by:
+- 24h trading volume
+- Volume to market cap ratio (velocity)
+- 24h price performance
+
+## Features
+- Auto-refresh every 60 seconds
+- Real-time metrics
+- Interactive dashboard
+- Mobile-responsive design
+
+## Data Source
+CoinGecko API - Free tier
